@@ -2,22 +2,28 @@
 <?php
 /**
  * Servidor GT06 em PHP (CLI)
- * Executar com: php -q gt06.php ou setsid nohup php gt06.php > /dev/null 2>&1 &
- * Verificar processos utilizando a porta escolhida: sudo lsof -i :7095
- * Finalizar processo: sudo kill -9 4021 (<<-pid do processo em execução)
  * Desenvolvedor. Fernando Ramos
  * (27) 99751-6427
  */
 
-/* chamar comando via terminal
- setsid nohup php gt06.php > /dev/null 2>&1 &
+/* chamar comando via terminal:
+ *   php -q gt06.php
+ *
+ * ou
+ *   setsid nohup php gt06.php > /dev/null 2>&1 &
+ *        
+ * Verificar processos utilizando a porta escolhida: sudo lsof -i :7095
+ * Finalizar processo: sudo kill -9 4021 (<<-pid do processo em execução)
 */
 
+//exibit erros
 error_reporting(E_ALL);
+//mantem execução continua
 set_time_limit(0);
+//ignora fechamento da tela pelo usuário
 ignore_user_abort(true);
 
-/*definição de fuso*/
+/*DEFINE FUSO HORÁRIO BRASIL*/
 date_default_timezone_set('America/Sao_Paulo');
 
 
@@ -138,6 +144,7 @@ if (!$server) {
 }
 
 logMsg("GT06 server ouvindo em {$address}:{$port}");
+
 logMsg("Arquivo de log global: {$logFile}");
 
 stream_set_blocking($server, false);
@@ -732,7 +739,7 @@ function parseGt06Location($client, string $hexFrame): ?array
     // Bit 0: Relay/Fuel Cut (0: OFF/Desbloqueado, 1: ON/Bloqueado)
     $cut_mask = 0x01;
     $isCutOn = (bool)($terminalInfoDec & $cut_mask);
-    $cut_status = $isCutOn ? 'CUT ON (Bloqueado)' : 'CUT OFF (Desbloqueado)';
+    $cut_status = $isCutOn ? 'ON' : 'OFF'; // ON = bloqueado OFF = desbloqueado
     
     // Bit 5: Alarm Status (0x20)
     $alarm_mask = 0x20; 
@@ -897,117 +904,6 @@ function parseGt06Location_12($client, string $hexFrame): ?array
  * Dependendo do firmware, o primeiro byte de "info" traz ACC, modo de energia etc.
  * Aqui apenas retornamos os bytes crus para futura análise.
  */
-
-
-/*Tirei essa porque estava invertido o resultado do bloqueio.
-function parseGt06Heartbeat(string $hexFrame): array
-{
-    # 78780a13c60504000100528f750d0a
-    // start(2) + len(1) + proto(1) = 4 bytes = 8 hex
-    $infoStart = 8;
-
-    // Posição onde o SN começa
-    $lenHex = substr($hexFrame, 4, 2);
-    $len    = hexdec($lenHex);
-    $lenHexStart    = 4;
-    $snStartOffset = $len - 4; // Subtrai SN (2 bytes) + CRC (2 bytes)
-    $snStartHexPos = $lenHexStart + $snStartOffset * 2;
-
-    // A informação de status (Terminal Info, Voltage, GSM, Alarm/Lang)
-    // normalmente ocupa 4 bytes (8 caracteres hex).
-    $infoHex = substr($hexFrame, $infoStart, 8); 
-    
-    if (strlen($infoHex) < 8) {
-        return ['error' => 'Frame de Heartbeat incompleto.'];
-    }
-
-    // --- 1. Terminal Information Content (1 byte) ---
-    $terminalInfoHex = substr($infoHex, 0, 2);
-    $terminalInfoDec = hexdec($terminalInfoHex);
-    
-    // Decodificação dos bits (baseada no Terminal Information Content do 0x22, Página 10)
-    
-    // Bit 0: Fuel/Electric Cut (0: Off/Release, 1: On/Cut)
-    $cut_status_raw   = (bool)($terminalInfoDec & 0x01); 
-    $cut_status = $cut_status_raw ? 'CUT ON (Bloqueado)' : 'CUT OFF (Desbloqueado)';
-    
-    // Bit 2: GPS Fixed (1=Fixed, 0=Not Fixed)
-    $gps_status_raw   = (bool)($terminalInfoDec & 0x04); 
-    $gps_status = $gps_status_raw ? 'POSICIONADO (GPS)' : 'LBS/NÃO POSICIONADO';
-    
-    // Bit 3: Charging (0: No, 1: Yes)
-    $charge_status_raw= (bool)($terminalInfoDec & 0x08); 
-    $charge_status = $charge_status_raw ? 'CARREGANDO' : 'NÃO CARREGANDO';
-    
-    // Bit 4: ACC (0: Off, 1: On)
-    $acc_status_raw   = (bool)($terminalInfoDec & 0x10); 
-    $acc_status = $acc_status_raw ? 'ON' : 'OFF';
-    
-    // Bit 5: Alarm Status (0: Normal, 1: Alarm)
-    $alarm_status_raw = (bool)($terminalInfoDec & 0x20); 
-    $alarm_status = $alarm_status_raw ? 'ALARME ATIVO' : 'NORMAL';
-    
-    // Bit 6: Low Battery (0: Normal, 1: Low)
-    $low_batt_raw     = (bool)($terminalInfoDec & 0x40); 
-    $low_batt_status = $low_batt_raw ? 'BATERIA BAIXA (Interna)' : 'BATERIA OK';
-
-
-    // --- 2. Voltage Level (1 byte) ---
-    $voltageHex = substr($infoHex, 2, 2);
-    $voltageDec = hexdec($voltageHex);
-    
-    // CORRIGIDO: Substituído 'match' por 'switch' para compatibilidade com PHP 7.4
-    $voltageLevel = 'Desconhecido';
-    switch ($voltageDec) {
-        case 0: $voltageLevel = 'Sem energia externa'; break;
-        case 1: $voltageLevel = 'Extremamente Baixa (1)'; break;
-        case 2: $voltageLevel = 'Muito Baixa (2)'; break;
-        case 3: $voltageLevel = 'Baixa (3)'; break;
-        case 4: $voltageLevel = 'Média (4)'; break;
-        case 5: $voltageLevel = 'Alta (5)'; break; 
-        case 6: $voltageLevel = 'Total (6)'; break;
-        default: $voltageLevel = 'Desconhecido'; break;
-    }
-
-    // --- 3. GSM Signal Strength (1 byte) ---
-    $gsmHex = substr($infoHex, 4, 2);
-    $gsmDec = hexdec($gsmHex);
-
-    // CORRIGIDO: Substituído 'match' por 'switch' para compatibilidade com PHP 7.4
-    $gsmSignal = 'Desconhecido';
-    switch ($gsmDec) {
-        case 0: $gsmSignal = 'Sem Sinal'; break;
-        case 1: $gsmSignal = 'Extremamente Fraco'; break;
-        case 2: $gsmSignal = 'Muito Fraco'; break;
-        case 3: $gsmSignal = 'Bom'; break;
-        case 4: $gsmSignal = 'Forte'; break; 
-        default: $gsmSignal = 'Desconhecido'; break;
-    }
-
-    // --- 4. Alarm/Language (1 byte) ---
-    // Este byte varia a interpretação, mas é menos crítico que o Terminal Info.
-    $alarmLangHex = substr($infoHex, 6, 2);
-
-    return [
-        'raw_info_hex'       => $infoHex,
-        
-        // Status decodificados do Terminal Info Byte
-        'acc_status'         => $acc_status,
-        'cut_status'         => $cut_status,
-        'gps_status'         => $gps_status,
-        'alarm_status'       => $alarm_status,
-        'charge_status'      => $charge_status,
-        'low_batt_status'    => $low_batt_status,
-        
-        // Informações de Bateria e Sinal
-        'voltage_level_dec'  => $voltageDec,
-        'voltage_level'      => $voltageLevel,
-        'gsm_signal_dec'     => $gsmDec,
-        'gsm_signal'         => $gsmSignal,
-        'alarm_language_hex' => $alarmLangHex,
-    ];
-}
-*/
 
 function parseGt06Heartbeat(string $hexFrame): array
 {
