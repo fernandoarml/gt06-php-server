@@ -28,7 +28,7 @@ date_default_timezone_set('America/Sao_Paulo');
 
 
 // ================== CONFIGURAÇÃO ==================
-$address = '162.214.106.18';  // IP do servidor
+$address = '0.0.0.0';  // IP do servidor
 $port    = 7095;              // Porta configurada no rastreador
 
 // Diretórios para logs e comandos
