@@ -434,7 +434,9 @@ function handleGt06Data($client, string $data): void
                 $cmdResp = parseGt06CommandResponse($hexFrame);
                 $frameInfo['command_response'] = $cmdResp;
 
-                if ($imei) {
+                if ($imei && isset($cmdResp['info_text']) &&
+    (str_contains(strtolower($cmdResp['info_text']), 'success') ||
+     str_contains(strtolower($cmdResp['info_text']), 'ok'))) {
                     deviceLogMsg($imei, "RESPOSTA DE COMANDO: " . json_encode($cmdResp, JSON_UNESCAPED_SLASHES));
 
                     // Se existe comando pendente para este IMEI, consideramos confirmado
@@ -447,8 +449,17 @@ function handleGt06Data($client, string $data): void
                         if (!empty($cmdData['file']) && file_exists($cmdData['file'])) {
                             @unlink($cmdData['file']);
                         }
-
+                        
                         unset($pendingCommands[$imei]);
+                        
+                        //se o comando for BATERIA, aguarda 15 segundos e envia comando de bloqueio.
+                        if($cmdData['command']=='BATERIA'){
+                            sleep(15);
+                            checkAndSendPendingCommandForClient($client, $imei, 'BLOQUEAR');
+                        }
+                        
+
+                        
                     }
                 }
 
@@ -480,18 +491,25 @@ function handleGt06Data($client, string $data): void
 /**
  * Verifica se há arquivo de comando para este IMEI e envia (BLOQUEAR / LIBERAR)
  */
-function checkAndSendPendingCommandForClient($client, string $imei): void
+function checkAndSendPendingCommandForClient($client, string $imei, $cmm = null): void
 {
     global $clientInfo, $cmdDir, $pendingCommands;
     
     $id = (int)$client; // ID do Cliente/Conexão
+    
     $cmdFile = $cmdDir . '/' . $imei;
-    if (!file_exists($cmdFile)) {
-        return;
+    
+    if(!empty($cmm)){
+        file_put_contents($cmdFile = $cmdDir . '/' . $imei, $cmm);
+        $content = $cmm;
+    }else{
+        if (!file_exists($cmdFile)) {
+            return;
+        }
+
+        $content = trim(strtoupper(file_get_contents($cmdFile)));
     }
-
-    $content = trim(strtoupper(file_get_contents($cmdFile)));
-
+    
     if ($content !== 'BLOQUEAR' && $content !== 'LIBERAR') {
         deviceLogMsg($imei, "Arquivo de comando inválido: '{$content}'");
         return;
