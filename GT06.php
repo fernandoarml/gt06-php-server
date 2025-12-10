@@ -145,6 +145,7 @@ if (!$server) {
 
 logMsg("GT06 server ouvindo em {$address}:{$port}");
 
+
 logMsg("Arquivo de log global: {$logFile}");
 
 stream_set_blocking($server, false);
@@ -434,9 +435,7 @@ function handleGt06Data($client, string $data): void
                 $cmdResp = parseGt06CommandResponse($hexFrame);
                 $frameInfo['command_response'] = $cmdResp;
 
-                if ($imei && isset($cmdResp['info_text']) &&
-    (str_contains(strtolower($cmdResp['info_text']), 'success') ||
-     str_contains(strtolower($cmdResp['info_text']), 'ok'))) {
+                if ($imei && isset($cmdResp['info_text']) && (strpos(strtolower($cmdResp['info_text']), 'success') !== false || strpos(strtolower($cmdResp['info_text']), 'ok') !== false)) {
                     deviceLogMsg($imei, "RESPOSTA DE COMANDO: " . json_encode($cmdResp, JSON_UNESCAPED_SLASHES));
 
                     // Se existe comando pendente para este IMEI, consideramos confirmado
@@ -510,7 +509,7 @@ function checkAndSendPendingCommandForClient($client, string $imei, $cmm = null)
         $content = trim(strtoupper(file_get_contents($cmdFile)));
     }
     
-    if ($content !== 'BLOQUEAR' && $content !== 'LIBERAR') {
+    if ($content !== 'BLOQUEAR' && $content !== 'LIBERAR' && $content !== 'BATERIA') {
         deviceLogMsg($imei, "Arquivo de comando inválido: '{$content}'");
         return;
     }
@@ -971,7 +970,7 @@ function parseGt06Heartbeat(string $hexFrame): array
 
     // Bit7: Fuel/Electric Cut
     $cut_status_raw = (bool)($terminalInfoDec & 0x80);
-    $cut_status     = $cut_status_raw ? 'CUT ON (Bloqueado)' : 'CUT OFF (Desbloqueado)';
+    $cut_status     = $cut_status_raw ? 'ON' : 'OFF'; //on = bloqueado
 
     // Bit6: GPS tracking ON/OFF
     $gps_track_raw = (bool)($terminalInfoDec & 0x40);
